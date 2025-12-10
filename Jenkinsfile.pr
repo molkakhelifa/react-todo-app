@@ -1,0 +1,29 @@
+pipeline {
+  agent any
+  stages {
+    stage('Checkout') { steps { checkout scm } }
+    stage('Setup') { steps { sh 'npm ci' } }
+    stage('Build') { steps { sh 'npm run build' } }
+    stage('Run Docker') {
+      steps {
+        sh 'docker build -t react-pr:${GIT_COMMIT} .'
+        sh 'docker run -d -p 8080:80 --name pr_${BUILD_NUMBER} react-pr:${GIT_COMMIT}'
+      }
+    }
+    stage('Smoke Test') {
+      steps {
+        sh './smoke-test.sh || exit 1'
+      }
+    }
+    stage('Archive Artifacts') {
+      steps {
+        archiveArtifacts artifacts: 'dist/**', allowEmptyArchive: true
+      }
+    }
+    stage('Cleanup') {
+      steps {
+        sh 'docker rm -f pr_${BUILD_NUMBER} || true'
+      }
+    }
+  }
+}

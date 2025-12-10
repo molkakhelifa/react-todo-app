@@ -1,0 +1,43 @@
+pipeline {
+  agent any
+  triggers { pollSCM('H/2 * * * *') } // or use webhook
+  stages {
+    stage('Checkout') { steps { checkout scm } }
+    stage('Setup') { steps { sh 'npm ci' } }
+    stage('Build (parallel)') {
+      parallel {
+        stage('Build Node18') {
+          steps {
+            sh 'docker build --build-arg NODE_VERSION=18 -t react-dev-node18:${GIT_COMMIT} .'
+          }
+        }
+        stage('Build Node20') {
+          steps {
+            sh 'docker build --build-arg NODE_VERSION=20 -t react-dev-node20:${GIT_COMMIT} .'
+          }
+        }
+      }
+    }
+    stage('Run Docker') {
+      steps {
+        sh 'docker run -d -p 8080:80 --name react_dev_${BUILD_NUMBER} react-dev-node20:${GIT_COMMIT}'
+      }
+    }
+    stage('Smoke Test') {
+      steps {
+        sh './smoke-test.sh > smoke.log || (cat smoke.log; exit 1)'
+        archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true
+      }
+    }
+    stage('Archive Artifacts') {
+      steps {
+        archiveArtifacts artifacts: 'dist/**, build.log', allowEmptyArchive: true
+      }
+    }
+    stage('Cleanup') {
+      steps {
+        sh 'docker ps -a --filter "name=react_dev_${BUILD_NUMBER}" --format "{{.ID}}" | xargs -r docker rm -f'
+      }
+    }
+  }
+}
