@@ -22,11 +22,11 @@ pipeline {
         bat 'docker run -d -p 8080:80 --name pr_%BUILD_NUMBER% react-pr:%GIT_COMMIT%' 
       }
     }
-    stage('Smoke Test') {
-      steps {
-        bat 'call smoke\\smoke-test.bat || exit /b 1'
-      }
-    }
+   stage('Smoke Test') {
+  steps {
+    bat 'call smoke\\smoke-test.bat'
+  }
+}
     stage('Archive Artifacts') {
       steps {
         archiveArtifacts artifacts: 'dist/**', allowEmptyArchive: true
