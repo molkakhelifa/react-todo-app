@@ -1,50 +1,57 @@
 pipeline {
-  agent any
-
-  stages {
-
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
+    agent any
+    environment {
+        IMAGE_NAME = "react-dev"
+        CONTAINER_NAME = "react-dev-${BUILD_NUMBER}"
+        DEV_PORT = "${8080 + BUILD_NUMBER}" // évite conflit si plusieurs builds en parallèle
     }
 
-    stage('Setup') {
-      steps {
-        bat 'npm ci'
-      }
-    }
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
 
-    stage('Build') {
-      steps {
-        bat 'npm run build'
-      }
-    }
+        stage('Setup') {
+            steps {
+                bat 'npm ci'
+            }
+        }
 
-    stage('Run Docker') {
-      steps {
-        bat 'docker rm -f react-dev || exit /b 0'
-        bat 'docker build -t react-dev:latest .'
-        bat 'docker run -d -p 8080:80 --name react-dev react-dev:latest'
-      }
-    }
+        stage('Build') {
+            steps {
+                bat 'npm run build'
+            }
+        }
 
-    stage('Smoke Test') {
-      steps {
-        bat 'call smoke\\smoke-test.bat'
-      }
-    }
+        stage('Run Docker') {
+            steps {
+                // Supprime le conteneur précédent si existant
+                bat "docker rm -f ${CONTAINER_NAME} || exit /b 0"
+                // Build l'image
+                bat "docker build -t ${IMAGE_NAME}:latest ."
+                // Run le conteneur sur un port unique basé sur BUILD_NUMBER
+                bat "docker run -d -p ${DEV_PORT}:80 --name ${CONTAINER_NAME} ${IMAGE_NAME}:latest"
+            }
+        }
 
-    stage('Archive Artifacts') {
-      steps {
-        archiveArtifacts artifacts: 'dist/**, smoke/smoke.log', allowEmptyArchive: true
-      }
-    }
+        stage('Smoke Test') {
+            steps {
+                bat 'call smoke\\smoke-test.bat'
+            }
+        }
 
-    stage('Cleanup') {
-      steps {
-        echo 'Container kept running for dev environment'
-      }
+        stage('Archive Artifacts') {
+            steps {
+                archiveArtifacts artifacts: 'dist/**, smoke/smoke.log', allowEmptyArchive: true
+            }
+        }
+
+        stage('Cleanup') {
+            steps {
+                echo "Le conteneur ${CONTAINER_NAME} reste actif pour l'environnement Dev"
+            }
+        }
     }
-  }
 }
