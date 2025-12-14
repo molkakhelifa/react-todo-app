@@ -1,37 +1,49 @@
 pipeline {
   agent any
+
   stages {
-    stage('Checkout') { 
-      steps { 
-        checkout scm 
-      } 
-    }
-    stage('Setup') { 
-      steps { 
-        bat 'npm ci' 
-      } 
-    }
-    stage('Build') { 
-      steps { 
-        bat 'npm run build' 
-      } 
-    }
-    stage('Run Docker') {
+
+    stage('Checkout') {
       steps {
-        bat 'docker build -t react-pr:%GIT_COMMIT% .' 
-        bat 'docker run -d -p 8080:80 --name pr_%BUILD_NUMBER% react-pr:%GIT_COMMIT%' 
+        checkout scm
       }
     }
-   stage('Smoke Test') {
-  steps {
-    bat 'call smoke\\smoke-test.bat'
-  }
-}
+
+    stage('Setup') {
+      steps {
+        bat 'npm ci'
+      }
+    }
+
+    stage('Build') {
+      steps {
+        bat 'npm run build'
+      }
+    }
+
+    stage('Run Docker') {
+      steps {
+        bat 'docker build -t react-pr:%GIT_COMMIT% .'
+        // PAS de mapping de port pour éviter les conflits
+        bat 'docker run -d --name pr_%BUILD_NUMBER% react-pr:%GIT_COMMIT%'
+      }
+    }
+
+    stage('Smoke Test') {
+      steps {
+        // Smoke test depuis l’intérieur du conteneur
+        bat '''
+        docker exec pr_%BUILD_NUMBER% wget -qO- http://localhost || exit /b 1
+        '''
+      }
+    }
+
     stage('Archive Artifacts') {
       steps {
         archiveArtifacts artifacts: 'dist/**', allowEmptyArchive: true
       }
     }
+
     stage('Cleanup') {
       steps {
         bat 'docker rm -f pr_%BUILD_NUMBER% || exit /b 0'
