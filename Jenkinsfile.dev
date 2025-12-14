@@ -1,42 +1,49 @@
 pipeline {
   agent any
-  triggers { pollSCM('H/2 * * * *') } // or use webhook
+
   stages {
-    stage('Checkout') { steps { checkout scm } }
-    stage('Setup') { steps { sh 'npm ci' } }
-    stage('Build (parallel)') {
-      parallel {
-        stage('Build Node18') {
-          steps {
-            sh 'docker build --build-arg NODE_VERSION=18 -t react-dev-node18:${GIT_COMMIT} .'
-          }
-        }
-        stage('Build Node20') {
-          steps {
-            sh 'docker build --build-arg NODE_VERSION=20 -t react-dev-node20:${GIT_COMMIT} .'
-          }
-        }
+
+    stage('Checkout') {
+      steps {
+        checkout scm
       }
     }
+
+    stage('Setup') {
+      steps {
+        bat 'npm ci'
+      }
+    }
+
+    stage('Build') {
+      steps {
+        bat 'npm run build'
+      }
+    }
+
     stage('Run Docker') {
       steps {
-        sh 'docker run -d -p 8080:80 --name react_dev_${BUILD_NUMBER} react-dev-node20:${GIT_COMMIT}'
+        bat 'docker rm -f react-dev || exit /b 0'
+        bat 'docker build -t react-dev:latest .'
+        bat 'docker run -d -p 8080:80 --name react-dev react-dev:latest'
       }
     }
+
     stage('Smoke Test') {
       steps {
-        sh './smoke-test.sh > smoke.log || (cat smoke.log; exit 1)'
-        archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true
+        bat 'call smoke\\smoke-test.bat'
       }
     }
+
     stage('Archive Artifacts') {
       steps {
-        archiveArtifacts artifacts: 'dist/**, build.log', allowEmptyArchive: true
+        archiveArtifacts artifacts: 'dist/**, smoke/smoke.log', allowEmptyArchive: true
       }
     }
+
     stage('Cleanup') {
       steps {
-        sh 'docker ps -a --filter "name=react_dev_${BUILD_NUMBER}" --format "{{.ID}}" | xargs -r docker rm -f'
+        echo 'Container kept running for dev environment'
       }
     }
   }
