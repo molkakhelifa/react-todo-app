@@ -1,12 +1,15 @@
 pipeline {
     agent any
+
     environment {
         IMAGE_NAME = "react-dev"
         CONTAINER_NAME = "react-dev-${BUILD_NUMBER}"
-        DEV_PORT = "${8080 + BUILD_NUMBER}" // évite conflit si plusieurs builds en parallèle
+        // Génère un port entre 8080 et 8180 pour éviter de dépasser 65535
+        DEV_PORT = "${8080 + (BUILD_NUMBER % 100)}"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -27,12 +30,13 @@ pipeline {
 
         stage('Run Docker') {
             steps {
-                // Supprime le conteneur précédent si existant
+                // Supprime le conteneur si déjà existant
                 bat "docker rm -f ${CONTAINER_NAME} || exit /b 0"
-                // Build l'image
+                // Build de l'image Docker
                 bat "docker build -t ${IMAGE_NAME}:latest ."
-                // Run le conteneur sur un port unique basé sur BUILD_NUMBER
+                // Run avec port dynamique
                 bat "docker run -d -p ${DEV_PORT}:80 --name ${CONTAINER_NAME} ${IMAGE_NAME}:latest"
+                echo "Container running on port ${DEV_PORT}"
             }
         }
 
@@ -50,7 +54,7 @@ pipeline {
 
         stage('Cleanup') {
             steps {
-                echo "Le conteneur ${CONTAINER_NAME} reste actif pour l'environnement Dev"
+                echo "Container kept running for dev environment: ${CONTAINER_NAME}"
             }
         }
     }
