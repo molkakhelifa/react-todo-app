@@ -1,4 +1,4 @@
-import TodoList from "./ToDoList";
+import TodoList from "./TodoList"; 
 
 function App() {
   return (
@@ -6,4 +6,4 @@ function App() {
   );
 }
 
-export default App
+export default App;
