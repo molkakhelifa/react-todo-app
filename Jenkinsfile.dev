@@ -4,12 +4,10 @@ pipeline {
     environment {
         IMAGE_NAME = "react-dev"
         CONTAINER_NAME = "react-dev-${BUILD_NUMBER}"
-        // Génère un port entre 8080 et 8180 pour éviter de dépasser 65535
-        DEV_PORT = "${8080 + (BUILD_NUMBER % 100)}"
+        DEV_PORT = "${8080 + (BUILD_NUMBER.toInteger() % 100)}"  // Port dynamique pour éviter conflit
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 checkout scm
@@ -30,18 +28,18 @@ pipeline {
 
         stage('Run Docker') {
             steps {
-                // Supprime le conteneur si déjà existant
+                // Supprime le conteneur précédent si existant
                 bat "docker rm -f ${CONTAINER_NAME} || exit /b 0"
                 // Build de l'image Docker
                 bat "docker build -t ${IMAGE_NAME}:latest ."
-                // Run avec port dynamique
+                // Run du conteneur avec port dynamique
                 bat "docker run -d -p ${DEV_PORT}:80 --name ${CONTAINER_NAME} ${IMAGE_NAME}:latest"
-                echo "Container running on port ${DEV_PORT}"
             }
         }
 
         stage('Smoke Test') {
             steps {
+                // Appel du script de smoke-test
                 bat 'call smoke\\smoke-test.bat'
             }
         }
@@ -54,7 +52,7 @@ pipeline {
 
         stage('Cleanup') {
             steps {
-                echo "Container kept running for dev environment: ${CONTAINER_NAME}"
+                echo "Le conteneur ${CONTAINER_NAME} est conservé pour l'environnement dev"
             }
         }
     }
