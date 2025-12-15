@@ -1,3 +1,8 @@
+# D'abord, sauvegardez l'ancien
+cp Jenkinsfile.tag Jenkinsfile.tag.backup
+
+# Créez un nouveau Jenkinsfile.tag COMPLET
+cat > Jenkinsfile.tag << 'EOF'
 pipeline {
     agent any
     
@@ -7,7 +12,6 @@ pipeline {
     }
     
     environment {
-        // Utiliser 8082 au lieu de 8081 (qui est utilisé par Jenkins)
         APP_PORT = '8082'
     }
     
@@ -38,7 +42,6 @@ pipeline {
                     def imageName = "react:${tag}"
                     def containerName = "react_tag_${tag.replace('.', '_')}"
                     
-                    // Nettoyage du port 8082
                     bat """
                         @echo off
                         echo Cleaning port ${APP_PORT} for tag build...
@@ -55,11 +58,8 @@ pipeline {
                     bat "docker rm -f ${containerName} 2>nul || exit 0"
                     bat "docker rmi ${imageName} 2>nul || exit 0"
                     
-                    // Build and run avec le port 8082
                     bat "docker build --no-cache -t ${imageName} ."
                     bat "docker run -d -p ${APP_PORT}:80 --name ${containerName} ${imageName}"
-                    
-                    // Attendre 5 secondes (version Windows corrigée)
                     bat "ping 127.0.0.1 -n 6 > nul"
                     
                     echo "✓ Release ${tag} accessible at http://localhost:${APP_PORT}"
@@ -70,7 +70,7 @@ pipeline {
         
         stage('Smoke Test') {
             steps {
-                bat 'call smoke-test.bat'
+                bat 'call smoke\\smoke-test.bat'
                 archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: true
             }
         }
@@ -90,7 +90,6 @@ pipeline {
                     bat "docker stop ${containerName} 2>nul || exit 0"
                     bat "docker rm ${containerName} 2>nul || exit 0"
                     
-                    // NE PAS supprimer l'image taggée - c'est une release !
                     echo "✓ Tagged image react:${tag} preserved for deployment"
                     echo "✓ This is a release image - not automatically deleted"
                 }
@@ -111,3 +110,4 @@ pipeline {
         }
     }
 }
+EOF
