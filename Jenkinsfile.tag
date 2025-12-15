@@ -1,4 +1,3 @@
-# Remove the cd command - Jenkins will handle workspace setup
 cat > Jenkinsfile.tag << 'EOF'
 pipeline {
     agent any
@@ -19,34 +18,6 @@ pipeline {
             }
         }
         
-        stage('Create Smoke Test Script') {
-            steps {
-                bat '''
-                    @echo off
-                    set URL=http://localhost:8082
-                    set MAX_RETRIES=10
-
-                    echo Testing %URL% ...
-
-                    for /l %%i in (1,1,%MAX_RETRIES%) do (
-                        powershell -Command "try {$response = Invoke-WebRequest -Uri '%URL%' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -eq 200) {exit 0} else {exit 1}} catch {exit 1}" > nul 2>&1
-                        if !errorlevel! equ 0 (
-                            echo SMOKE PASSED > smoke.log
-                            exit /b 0
-                        )
-                        
-                        if %%i lss %MAX_RETRIES% (
-                            echo Waiting for application... Attempt %%i of %MAX_RETRIES%
-                            ping -n 2 127.0.0.1 > nul
-                        )
-                    )
-
-                    echo SMOKE FAILED > smoke.log
-                    exit /b 1
-                '''
-            }
-        }
-        
         stage('Setup') {
             steps {
                 bat 'npm ci --prefer-offline'
@@ -56,6 +27,30 @@ pipeline {
         stage('Build') {
             steps {
                 bat 'npm run build'
+            }
+        }
+        
+        stage('Create Smoke Test') {
+            steps {
+                bat '''
+                    @echo off > smoke-test.bat
+                    echo set URL=http://localhost:8082 >> smoke-test.bat
+                    echo set MAX_RETRIES=10 >> smoke-test.bat
+                    echo echo Testing %%URL%% ... >> smoke-test.bat
+                    echo for /l %%%%i in (1,1,%%MAX_RETRIES%%) do ( >> smoke-test.bat
+                    echo     powershell -Command "try {$response = Invoke-WebRequest -Uri '%%URL%%' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -eq 200) {exit 0} else {exit 1}} catch {exit 1}" ^> nul 2^>^&1 >> smoke-test.bat
+                    echo     if !errorlevel! equ 0 ( >> smoke-test.bat
+                    echo         echo SMOKE PASSED ^> smoke.log >> smoke-test.bat
+                    echo         exit /b 0 >> smoke-test.bat
+                    echo     ) >> smoke-test.bat
+                    echo     if %%%%i lss %%MAX_RETRIES%% ( >> smoke-test.bat
+                    echo         echo Waiting for application... Attempt %%%%i of %%MAX_RETRIES%% >> smoke-test.bat
+                    echo         ping -n 2 127.0.0.1 ^> nul >> smoke-test.bat
+                    echo     ) >> smoke-test.bat
+                    echo ) >> smoke-test.bat
+                    echo echo SMOKE FAILED ^> smoke.log >> smoke-test.bat
+                    echo exit /b 1 >> smoke-test.bat
+                '''
             }
         }
         
