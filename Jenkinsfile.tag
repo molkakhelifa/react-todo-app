@@ -1,14 +1,9 @@
-cat > Jenkinsfile.tag << 'EOF'
 pipeline {
     agent any
     
     options {
         buildDiscarder(logRotator(numToKeepStr: '20'))
         disableConcurrentBuilds()
-    }
-    
-    environment {
-        APP_PORT = '8082'
     }
     
     stages {
@@ -27,30 +22,7 @@ pipeline {
         stage('Build') {
             steps {
                 bat 'npm run build'
-            }
-        }
-        
-        stage('Create Smoke Test') {
-            steps {
-                bat '''
-                    @echo off > smoke-test.bat
-                    echo set URL=http://localhost:8082 >> smoke-test.bat
-                    echo set MAX_RETRIES=10 >> smoke-test.bat
-                    echo echo Testing %%URL%% ... >> smoke-test.bat
-                    echo for /l %%%%i in (1,1,%%MAX_RETRIES%%) do ( >> smoke-test.bat
-                    echo     powershell -Command "try {$response = Invoke-WebRequest -Uri '%%URL%%' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -eq 200) {exit 0} else {exit 1}} catch {exit 1}" ^> nul 2^>^&1 >> smoke-test.bat
-                    echo     if !errorlevel! equ 0 ( >> smoke-test.bat
-                    echo         echo SMOKE PASSED ^> smoke.log >> smoke-test.bat
-                    echo         exit /b 0 >> smoke-test.bat
-                    echo     ) >> smoke-test.bat
-                    echo     if %%%%i lss %%MAX_RETRIES%% ( >> smoke-test.bat
-                    echo         echo Waiting for application... Attempt %%%%i of %%MAX_RETRIES%% >> smoke-test.bat
-                    echo         ping -n 2 127.0.0.1 ^> nul >> smoke-test.bat
-                    echo     ) >> smoke-test.bat
-                    echo ) >> smoke-test.bat
-                    echo echo SMOKE FAILED ^> smoke.log >> smoke-test.bat
-                    echo exit /b 1 >> smoke-test.bat
-                '''
+                echo "✓ Building version: ${env.TAG_NAME}"
             }
         }
         
@@ -59,15 +31,61 @@ pipeline {
                 script {
                     def tag = env.TAG_NAME ?: env.GIT_COMMIT.take(7)
                     def imageName = "react:${tag}"
-                    def containerName = "react_tag_${tag}"
+                    def containerName = "react_tag_${tag.replace('.', '_')}"
+                    
+                    // Port cleanup
+                    bat """
+                        @echo off
+                        echo Cleaning port 8080 for tag build...
+                        for /f "tokens=*" %%i in ('docker ps --format "{{.Names}}"') do (
+                            docker port %%i | findstr ":8080" >nul
+                            if !errorlevel! == 0 (
+                                docker stop %%i 2>nul
+                                docker rm %%i 2>nul
+                            )
+                        )
+                        exit 0
+                    """
                     
                     bat "docker rm -f ${containerName} 2>nul || exit 0"
                     bat "docker rmi ${imageName} 2>nul || exit 0"
                     
+                    // Build and run
                     bat "docker build --no-cache -t ${imageName} ."
-                    bat "docker run -d -p ${APP_PORT}:80 --name ${containerName} ${imageName}"
+                    bat "docker run -d -p 8080:80 --name ${containerName} ${imageName}"
                     
-                    bat "ping -n 6 127.0.0.1 > nul"
+                    // Wait for container to be ready using ping with retry logic
+                    bat """
+                        @echo off
+                        setlocal enabledelayedexpansion
+                        echo Waiting for container to be ready...
+                        set max_retries=30
+                        set retry_delay=2
+                        set retry_count=0
+                        
+                        :retry_loop
+                        ping -n 1 -w 1000 127.0.0.1 >nul
+                        timeout /t 1 /nobreak >nul
+                        set /a retry_count+=1
+                        
+                        echo Attempt !retry_count! of !max_retries!: Checking if application is up...
+                        
+                        curl -s -o nul -w "%%{http_code}" http://localhost:8080 | findstr "^200$" >nul
+                        if !errorlevel! == 0 (
+                            echo Application is ready!
+                            exit 0
+                        )
+                        
+                        if !retry_count! geq !max_retries! (
+                            echo Application failed to start after !max_retries! attempts
+                            exit 1
+                        )
+                        
+                        timeout /t !retry_delay! /nobreak >nul
+                        goto retry_loop
+                    """
+                    
+                    echo "✓ Release ${tag} accessible at http://localhost:8080"
                 }
             }
         }
@@ -89,10 +107,14 @@ pipeline {
             steps {
                 script {
                     def tag = env.TAG_NAME ?: env.GIT_COMMIT.take(7)
-                    def containerName = "react_tag_${tag}"
+                    def containerName = "react_tag_${tag.replace('.', '_')}"
                     
                     bat "docker stop ${containerName} 2>nul || exit 0"
                     bat "docker rm ${containerName} 2>nul || exit 0"
+                    
+                    // DO NOT delete tagged image - it's a release!
+                    echo "✓ Tagged image react:${tag} preserved for deployment"
+                    echo "✓ This is a release image - not automatically deleted"
                 }
             }
         }
@@ -100,11 +122,13 @@ pipeline {
     
     post {
         success {
-            echo "Build succeeded"
+            echo "✓ Build for tag ${env.TAG_NAME} succeeded"
+            echo "✓ Release artifacts archived"
+            echo "✓ Image react:${env.TAG_NAME} available for deployment"
         }
         failure {
-            echo "Build failed"
+            echo "✗ Build for tag ${env.TAG_NAME} failed"
+            echo "✗ Release blocked - fix issues and create new tag"
         }
     }
 }
-EOF
