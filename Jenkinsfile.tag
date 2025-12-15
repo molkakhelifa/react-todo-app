@@ -58,7 +58,9 @@ pipeline {
                     // Build and run avec le port 8082
                     bat "docker build --no-cache -t ${imageName} ."
                     bat "docker run -d -p ${APP_PORT}:80 --name ${containerName} ${imageName}"
-                    bat 'timeout /t 5 /nobreak'
+                    
+                    // Attendre 5 secondes (version Windows corrigée)
+                    bat "ping 127.0.0.1 -n 6 > nul"
                     
                     echo "✓ Release ${tag} accessible at http://localhost:${APP_PORT}"
                     echo "✓ Jenkins is at http://localhost:8081"
