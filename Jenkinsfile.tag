@@ -11,11 +11,6 @@ pipeline {
         string(name: 'TAG_NAME', defaultValue: 'v1.0.0', description: 'Docker image tag')
     }
 
-    environment {
-        IMAGE_NAME = "react:${TAG_NAME}"
-        CONTAINER_NAME = "react_${TAG_NAME.replace('.', '_')}"
-    }
-
     stages {
 
         stage('Checkout') {
@@ -26,34 +21,38 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                bat 'npm ci'
+                bat 'npm ci --prefer-offline'
             }
         }
 
         stage('Build Application') {
             steps {
                 bat 'npm run build'
-                echo "Build completed for tag ${TAG_NAME}"
+                echo "Build completed for tag ${params.TAG_NAME}"
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                bat 'docker build -t %IMAGE_NAME% .'
+                script {
+                    def imageName = "react:${params.TAG_NAME}"
+                    bat "docker build -t ${imageName} ."
+                }
             }
         }
 
         stage('Run Docker Container') {
             steps {
-                bat """
-                @echo off
-                docker rm -f %CONTAINER_NAME% 2>nul
+                script {
+                    def tag = params.TAG_NAME
+                    def imageName = "react:${tag}"
+                    def containerName = "react_${tag.replace('.', '_')}"
 
-                docker run -d ^
-                  -p 8082:80 ^
-                  --name %CONTAINER_NAME% ^
-                  %IMAGE_NAME%
-                """
+                    bat "docker rm -f ${containerName} 2>nul || exit 0"
+                    bat "docker run -d -p 8082:80 --name ${containerName} ${imageName}"
+
+                    echo "Container ${containerName} running on http://localhost:8082"
+                }
             }
         }
 
@@ -66,22 +65,23 @@ pipeline {
 
         stage('Cleanup') {
             steps {
-                bat """
-                @echo off
-                docker stop %CONTAINER_NAME% 2>nul
-                docker rm %CONTAINER_NAME% 2>nul
-                """
+                script {
+                    def containerName = "react_${params.TAG_NAME.replace('.', '_')}"
+                    bat "docker stop ${containerName} 2>nul || exit 0"
+                    bat "docker rm ${containerName} 2>nul || exit 0"
+                    echo "Cleanup done for ${containerName}"
+                }
             }
         }
     }
 
     post {
         success {
-            echo "✔ BUILD SUCCESS for ${TAG_NAME}"
+            echo "✔ BUILD SUCCESS for ${params.TAG_NAME}"
             echo "✔ App available on http://localhost:8082"
         }
         failure {
-            echo "✖ BUILD FAILED for ${TAG_NAME}"
+            echo "✖ BUILD FAILED for ${params.TAG_NAME}"
         }
     }
 }
