@@ -9,7 +9,7 @@ pipeline {
 
     parameters {
         string(name: 'TAG_NAME', defaultValue: 'v1.0.0', description: 'Docker image tag')
-        string(name: 'APP_PORT', defaultValue: '8082', description: 'Port for the app container')
+        string(name: 'APP_PORT', defaultValue: '8083', description: 'Port exposé (doit être libre)')
     }
 
     environment {
@@ -34,7 +34,6 @@ pipeline {
         stage('Build Application') {
             steps {
                 bat 'npm run build'
-                echo "Build completed for tag ${params.TAG_NAME}"
             }
         }
 
@@ -48,8 +47,10 @@ pipeline {
             steps {
                 bat """
                 @echo off
-                docker rm -f ${CONTAINER_NAME} 2>nul || exit 0
+                echo Cleaning old container if exists...
+                docker rm -f ${CONTAINER_NAME} 2>nul
 
+                echo Running container on port ${params.APP_PORT}...
                 docker run -d ^
                   -p ${params.APP_PORT}:80 ^
                   --name ${CONTAINER_NAME} ^
