@@ -9,6 +9,12 @@ pipeline {
 
     parameters {
         string(name: 'TAG_NAME', defaultValue: 'v1.0.0', description: 'Docker image tag')
+        string(name: 'APP_PORT', defaultValue: '8082', description: 'Port for the app container')
+    }
+
+    environment {
+        IMAGE_NAME = "react:${params.TAG_NAME}"
+        CONTAINER_NAME = "react_${params.TAG_NAME.replace('.', '_')}"
     }
 
     stages {
@@ -34,43 +40,38 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    def imageName = "react:${params.TAG_NAME}"
-                    bat "docker build -t ${imageName} ."
-                }
+                bat "docker build -t ${IMAGE_NAME} ."
             }
         }
 
         stage('Run Docker Container') {
             steps {
-                script {
-                    def tag = params.TAG_NAME
-                    def imageName = "react:${tag}"
-                    def containerName = "react_${tag.replace('.', '_')}"
+                bat """
+                @echo off
+                docker rm -f ${CONTAINER_NAME} 2>nul || exit 0
 
-                    bat "docker rm -f ${containerName} 2>nul || exit 0"
-                    bat "docker run -d -p 8082:80 --name ${containerName} ${imageName}"
-
-                    echo "Container ${containerName} running on http://localhost:8082"
-                }
+                docker run -d ^
+                  -p ${params.APP_PORT}:80 ^
+                  --name ${CONTAINER_NAME} ^
+                  ${IMAGE_NAME}
+                """
             }
         }
 
         stage('Smoke Test') {
             steps {
-                bat 'call smoke\\smoke-test.bat'
+                bat "call smoke\\smoke-test.bat ${params.APP_PORT}"
                 archiveArtifacts artifacts: 'smoke.log', allowEmptyArchive: false
             }
         }
 
         stage('Cleanup') {
             steps {
-                script {
-                    def containerName = "react_${params.TAG_NAME.replace('.', '_')}"
-                    bat "docker stop ${containerName} 2>nul || exit 0"
-                    bat "docker rm ${containerName} 2>nul || exit 0"
-                    echo "Cleanup done for ${containerName}"
-                }
+                bat """
+                @echo off
+                docker stop ${CONTAINER_NAME} 2>nul
+                docker rm ${CONTAINER_NAME} 2>nul
+                """
             }
         }
     }
@@ -78,7 +79,7 @@ pipeline {
     post {
         success {
             echo "✔ BUILD SUCCESS for ${params.TAG_NAME}"
-            echo "✔ App available on http://localhost:8082"
+            echo "✔ App available on http://localhost:${params.APP_PORT}"
         }
         failure {
             echo "✖ BUILD FAILED for ${params.TAG_NAME}"
